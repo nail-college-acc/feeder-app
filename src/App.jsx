@@ -1066,15 +1066,18 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
   const [teamForm, setTeamForm] = useState({ name: '', farm: '', location: '', description: '' });
   const [teamQuery, setTeamQuery] = useState('');
   const [teamResults, setTeamResults] = useState([]);
+  const [teamRequests, setTeamRequests] = useState([]);
   const [searchingTeams, setSearchingTeams] = useState(false);
 
   const activeTeam = teams.find((team) => team.id === activeTeamId) || teams[0] || null;
+  const isActiveTeamOwner = Boolean(activeTeam && user?.id === activeTeam.created_by);
 
   useEffect(() => {
     let mounted = true;
     setSearchingTeams(true);
     const timeout = window.setTimeout(() => {
-      api(`/teams/search?q=${encodeURIComponent(teamQuery)}`)
+      const userQuery = user?.id ? `&user_id=${encodeURIComponent(user.id)}` : '';
+      api(`/teams/search?q=${encodeURIComponent(teamQuery)}${userQuery}`)
         .then((results) => {
           if (mounted) setTeamResults(Array.isArray(results) ? results : []);
         })
@@ -1090,7 +1093,24 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
       mounted = false;
       window.clearTimeout(timeout);
     };
-  }, [teamQuery, setError]);
+  }, [teamQuery, user?.id, setError]);
+
+  useEffect(() => {
+    if (!activeTeam || !isActiveTeamOwner) {
+      setTeamRequests([]);
+      return undefined;
+    }
+
+    let mounted = true;
+    api(`/teams/${encodeURIComponent(activeTeam.id)}/requests?user_id=${encodeURIComponent(user.id)}`)
+      .then((requests) => {
+        if (mounted) setTeamRequests(Array.isArray(requests) ? requests : []);
+      })
+      .catch((issue) => {
+        if (mounted) setError(issue.message || 'Gagal memuat permintaan bergabung.');
+      });
+    return () => { mounted = false; };
+  }, [activeTeam?.id, isActiveTeamOwner, user?.id, setError]);
 
   async function selectTeam(team) {
     if (!user?.id) {
@@ -1118,19 +1138,62 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
         method: 'POST',
         body: JSON.stringify({ team_id: team.id, user_id: user.id, role: user.role || 'Peternak lapangan' }),
       });
-      const joinedTeam = {
-        ...team,
-        members: response.members.map((member) => ({
-          ...member,
-          status: member.id === team.created_by ? 'owner' : 'member',
-        })),
-      };
-      setTeams((current) => [joinedTeam, ...current.filter((candidate) => candidate.id !== team.id)]);
-      setActiveTeamId(team.id);
-      setNotice(response.result.already_member ? `Anda sudah menjadi anggota ${team.name}.` : `Berhasil bergabung dengan ${team.name}.`);
+      if (response.result.request_pending) {
+        setTeamResults((current) => current.map((result) => result.id === team.id
+          ? { ...result, request_status: 'pending' }
+          : result));
+        setNotice(`Permintaan bergabung dengan ${team.name} telah dikirim. Tunggu persetujuan pemilik tim.`);
+      } else {
+        setNotice(`Anda sudah menjadi anggota ${team.name}.`);
+      }
       window.setTimeout(() => setNotice(''), 2800);
     } catch (issue) {
       setError(issue.message || 'Gagal bergabung dengan tim.');
+    }
+  }
+
+  async function reviewJoinRequest(request, accept) {
+    if (!activeTeam || !user?.id) return;
+    const endpoint = `/teams/${encodeURIComponent(activeTeam.id)}/requests/${encodeURIComponent(request.id)}`;
+    try {
+      const response = await api(accept ? `${endpoint}/accept` : endpoint, {
+        method: accept ? 'POST' : 'DELETE',
+        body: JSON.stringify({ owner_user_id: user.id }),
+      });
+      setTeamRequests(response.requests || []);
+      if (accept) {
+        const nextMembers = response.members.map((member) => ({
+          ...member,
+          status: member.id === activeTeam.created_by ? 'owner' : 'member',
+        }));
+        setTeams((current) => current.map((team) => team.id === activeTeam.id
+          ? { ...team, members: nextMembers }
+          : team));
+        setNotice(`${request.name} telah diterima sebagai anggota tim.`);
+      } else {
+        setNotice(`Permintaan ${request.name} telah ditolak.`);
+      }
+      window.setTimeout(() => setNotice(''), 2800);
+    } catch (issue) {
+      setError(issue.message || 'Gagal memproses permintaan bergabung.');
+    }
+  }
+
+  async function deleteTeam() {
+    if (!activeTeam || !user?.id) return;
+    if (!window.confirm(`Hapus tim “${activeTeam.name}”? Anggota, permintaan bergabung, dan racikan tim juga akan dihapus.`)) return;
+    try {
+      await api(`/teams/${encodeURIComponent(activeTeam.id)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ owner_user_id: user.id }),
+      });
+      const remainingTeams = teams.filter((team) => team.id !== activeTeam.id);
+      setTeams(remainingTeams);
+      setActiveTeamId(remainingTeams[0]?.id || null);
+      setNotice(`Tim “${activeTeam.name}” telah dihapus.`);
+      window.setTimeout(() => setNotice(''), 2800);
+    } catch (issue) {
+      setError(issue.message || 'Gagal menghapus tim.');
     }
   }
 
@@ -1250,22 +1313,49 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
             ))}
           </div>
           {activeTeam && (
-            <div className="member-list">
-              {activeTeam.members.map((member) => (
-                <div key={member.email} className="member-card">
-                  <div>
-                    <strong>{member.name}</strong>
-                    <small>{member.role}</small>
+            <>
+              <div className="member-list">
+                {activeTeam.members.map((member) => (
+                  <div key={member.id} className="member-card">
+                    <div>
+                      <strong>{member.name}</strong>
+                      <small>{member.role}</small>
+                    </div>
+                    <div className="member-actions">
+                      <span className={`status-pill ${member.id === activeTeam.created_by ? 'owner' : 'member'}`}>{member.id === activeTeam.created_by ? 'Owner' : 'Anggota'}</span>
+                      {isActiveTeamOwner && member.id !== activeTeam.created_by && (
+                        <button className="row-remove" onClick={() => removeMember(member)} aria-label={`Hapus ${member.name} dari tim`}><Trash2 size={14} /></button>
+                      )}
+                    </div>
                   </div>
-                  <div className="member-actions">
-                    <span className={`status-pill ${member.id === activeTeam.created_by ? 'owner' : 'member'}`}>{member.id === activeTeam.created_by ? 'Owner' : 'Anggota'}</span>
-                    {user?.id === activeTeam.created_by && member.id !== activeTeam.created_by && (
-                      <button className="row-remove" onClick={() => removeMember(member)} aria-label={`Hapus ${member.name} dari tim`}><Trash2 size={14} /></button>
-                    )}
+                ))}
+              </div>
+              {isActiveTeamOwner && (
+                <>
+                  <div className="team-management-actions">
+                    <span className="eyebrow">PERMINTAAN BERGABUNG</span>
+                    <span className="mini-badge">{teamRequests.length} menunggu</span>
                   </div>
-                </div>
-              ))}
-            </div>
+                  {teamRequests.length > 0 && (
+                    <div className="member-list">
+                      {teamRequests.map((request) => (
+                        <div key={request.id} className="member-card">
+                          <div>
+                            <strong>{request.name}</strong>
+                            <small>{request.email} · {request.role}</small>
+                          </div>
+                          <div className="member-actions">
+                            <button className="button button-primary request-action" onClick={() => reviewJoinRequest(request, true)}>Terima</button>
+                            <button className="row-remove" onClick={() => reviewJoinRequest(request, false)} aria-label={`Tolak permintaan ${request.name}`}><X size={14} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button className="button button-outline team-delete-button" onClick={deleteTeam}><Trash2 size={15} /> Hapus tim</button>
+                </>
+              )}
+            </>
           )}
         </section>
 
@@ -1282,6 +1372,7 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
             {searchingTeams && <div className="loading-row">Mencari tim…</div>}
             {!searchingTeams && teamResults.map((team) => {
               const isMember = teams.some((joinedTeam) => joinedTeam.id === team.id);
+              const requestPending = team.request_status === 'pending';
               return (
                 <article className="team-result" key={team.id}>
                   <div>
@@ -1290,8 +1381,8 @@ function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNo
                     <p>{team.description}</p>
                     <span>{team.member_count} anggota</span>
                   </div>
-                  <button className={`button ${isMember ? 'button-light' : 'button-primary'}`} disabled={isMember || !user?.id} onClick={() => joinTeam(team)}>
-                    {isMember ? 'Sudah bergabung' : user ? 'Gabung' : 'Login untuk gabung'}
+                  <button className={`button ${isMember || requestPending ? 'button-light' : 'button-primary'}`} disabled={isMember || requestPending || !user?.id} onClick={() => joinTeam(team)}>
+                    {isMember ? 'Sudah bergabung' : requestPending ? 'Menunggu persetujuan' : user ? 'Minta bergabung' : 'Login untuk gabung'}
                   </button>
                 </article>
               );

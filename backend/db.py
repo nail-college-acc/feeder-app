@@ -89,6 +89,19 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS team_join_requests (
+                team_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                requested_at TEXT NOT NULL,
+                PRIMARY KEY(team_id, user_id),
+                FOREIGN KEY(team_id) REFERENCES teams(id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS user_team_state (
                 user_id TEXT PRIMARY KEY,
                 team_id TEXT,
@@ -174,26 +187,29 @@ def add_member_to_team(team_id: str, user_id: str, role: str = "Peternak lapanga
         if not user:
             raise ValueError("User not found")
         existing = conn.execute("SELECT 1 FROM team_members WHERE team_id = ? AND user_id = ?", (team_id, user_id)).fetchone()
-        joined_at = _utc_now()
-        if not existing:
+        if existing:
+            return {"team_id": team_id, "user_id": user_id, "already_member": True, "request_pending": False}
+        request = conn.execute(
+            "SELECT 1 FROM team_join_requests WHERE team_id = ? AND user_id = ?",
+            (team_id, user_id),
+        ).fetchone()
+        if not request:
             conn.execute(
-                "INSERT INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)",
-                (team_id, user_id, role or "Peternak lapangan", joined_at),
+                "INSERT INTO team_join_requests (team_id, user_id, role, requested_at) VALUES (?, ?, ?, ?)",
+                (team_id, user_id, role or "Peternak lapangan", _utc_now()),
             )
-        conn.execute(
-            "INSERT INTO user_team_state (user_id, team_id, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET team_id = excluded.team_id, updated_at = excluded.updated_at",
-            (user_id, team_id, joined_at),
-        )
-        return {"team_id": team_id, "user_id": user_id, "already_member": bool(existing)}
+        return {"team_id": team_id, "user_id": user_id, "already_member": False, "request_pending": True}
 
 
-def search_teams(search_term: str = "", limit: int = 30) -> list[dict]:
+def search_teams(search_term: str = "", user_id: str | None = None, limit: int = 30) -> list[dict]:
     term = f"%{search_term.strip()}%"
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT t.id, t.name, t.farm, t.location, t.description, t.created_by, t.created_at,
-                   COUNT(tm.user_id) AS member_count
+                   COUNT(tm.user_id) AS member_count,
+                   (SELECT 'pending' FROM team_join_requests tjr
+                    WHERE tjr.team_id = t.id AND tjr.user_id = ?) AS request_status
             FROM teams t
             LEFT JOIN team_members tm ON tm.team_id = t.id
             WHERE (? = '%%' OR t.name LIKE ? OR t.farm LIKE ? OR t.location LIKE ?)
@@ -201,7 +217,7 @@ def search_teams(search_term: str = "", limit: int = 30) -> list[dict]:
             ORDER BY member_count DESC, t.created_at DESC
             LIMIT ?
             """,
-            (term, term, term, term, limit),
+            (user_id, term, term, term, term, limit),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -229,6 +245,77 @@ def remove_team_member(team_id: str, actor_user_id: str, member_user_id: str) ->
             "DELETE FROM user_team_state WHERE user_id = ? AND team_id = ?",
             (member_user_id, team_id),
         )
+
+
+def get_team_join_requests(team_id: str, owner_user_id: str) -> list[dict]:
+    with get_connection() as conn:
+        team = conn.execute("SELECT created_by FROM teams WHERE id = ?", (team_id,)).fetchone()
+        if not team:
+            raise ValueError("Team not found")
+        if team["created_by"] != owner_user_id:
+            raise PermissionError("Only the team owner can view join requests")
+        rows = conn.execute(
+            """
+            SELECT u.id, u.name, u.email, tjr.role, tjr.requested_at
+            FROM team_join_requests tjr
+            INNER JOIN users u ON u.id = tjr.user_id
+            WHERE tjr.team_id = ?
+            ORDER BY tjr.requested_at ASC
+            """,
+            (team_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def review_team_join_request(
+    team_id: str,
+    owner_user_id: str,
+    requester_user_id: str,
+    accept: bool,
+) -> None:
+    with get_connection() as conn:
+        team = conn.execute("SELECT created_by FROM teams WHERE id = ?", (team_id,)).fetchone()
+        if not team:
+            raise ValueError("Team not found")
+        if team["created_by"] != owner_user_id:
+            raise PermissionError("Only the team owner can review join requests")
+        request = conn.execute(
+            "SELECT role FROM team_join_requests WHERE team_id = ? AND user_id = ?",
+            (team_id, requester_user_id),
+        ).fetchone()
+        if not request:
+            raise ValueError("Join request not found")
+        if accept:
+            joined_at = _utc_now()
+            conn.execute(
+                "INSERT INTO team_members (team_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)",
+                (team_id, requester_user_id, request["role"], joined_at),
+            )
+            conn.execute(
+                """
+                INSERT INTO user_team_state (user_id, team_id, updated_at) VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET team_id = excluded.team_id, updated_at = excluded.updated_at
+                """,
+                (requester_user_id, team_id, joined_at),
+            )
+        conn.execute(
+            "DELETE FROM team_join_requests WHERE team_id = ? AND user_id = ?",
+            (team_id, requester_user_id),
+        )
+
+
+def delete_team(team_id: str, owner_user_id: str) -> None:
+    with get_connection() as conn:
+        team = conn.execute("SELECT created_by FROM teams WHERE id = ?", (team_id,)).fetchone()
+        if not team:
+            raise ValueError("Team not found")
+        if team["created_by"] != owner_user_id:
+            raise PermissionError("Only the team owner can delete this team")
+        conn.execute("DELETE FROM team_recipes WHERE team_id = ?", (team_id,))
+        conn.execute("DELETE FROM team_join_requests WHERE team_id = ?", (team_id,))
+        conn.execute("DELETE FROM team_members WHERE team_id = ?", (team_id,))
+        conn.execute("DELETE FROM user_team_state WHERE team_id = ?", (team_id,))
+        conn.execute("DELETE FROM teams WHERE id = ?", (team_id,))
 
 
 def create_team_recipe(team_id: str, user_id: str, name: str, items: list[dict]) -> dict:

@@ -313,6 +313,10 @@ h1, h2, h3, p { margin-top: 0; }
 .team-result .button { flex: 0 0 auto; font-size: 9px; min-height: 32px; padding: 0 10px; }
 .empty-team-results { color: #78857a; font-size: 10px; margin: 5px 0; }
 .member-actions { align-items: center; display: flex; gap: 7px; }
+.team-management-actions { align-items: center; display: flex; justify-content: space-between; margin-top: 20px; }
+.request-action { font-size: 9px; min-height: 30px; padding: 0 9px; }
+.team-delete-button { color: #a44739; margin-top: 18px; }
+.team-delete-button:hover { background: #fff4f1; border-color: #e8c4bd; }
 .status-pill { align-items: center; border-radius: 999px; display: inline-flex; font-size: 7px; font-weight: 700; letter-spacing: .4px; padding: 5px 7px; }
 .status-pill.owner { background: #edf3e9; color: #5c7b60; }
 .status-pill.member { background: #f4f0e6; color: #9b8555; }

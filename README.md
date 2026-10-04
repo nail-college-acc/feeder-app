@@ -36,7 +36,7 @@ The interface is in Indonesian. You can add custom ingredients from the ingredie
 
 Authentication and team data are stored in a local SQLite database at `backend/feeder.db` when the FastAPI backend runs. `/api/auth/signup` creates a user record and hashes the password before saving it; `/api/auth/login` verifies stored credentials; `/api/teams` and related routes persist team records and memberships. On Vercel, the database is initialized under `/tmp` because the deployed application files are read-only. Vercel's temporary filesystem is not durable or shared between function instances, so accounts, teams, and shared recipes may disappear; use a hosted database such as PostgreSQL or Supabase for persistent production data. Set `FEEDER_DB_PATH` to override the database path where a persistent writable disk is available.
 
-Saved recipes are associated with the active team and stored in SQLite when a signed-in team member saves them. Team members can search public team listings, join a team, and team owners can remove members. If the user has not joined a team, saved recipes remain in that browser's local storage.
+Saved recipes are associated with the active team and stored in SQLite when a signed-in team member saves them. Users can search public teams and request to join; owners can accept or reject requests, remove members, and delete their teams. Deleting a team also removes its memberships, pending requests, and shared recipes. If the user has not joined a team, saved recipes remain in that browser's local storage.
 
 ## Deploy to Vercel
 

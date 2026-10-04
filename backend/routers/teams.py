@@ -6,12 +6,15 @@ from backend.db import (
     add_member_to_team,
     create_team,
     create_team_recipe,
+    delete_team,
     delete_team_recipe,
     get_current_team_for_user,
+    get_team_join_requests,
     get_team_members,
     get_team_recipes,
     get_teams_for_user,
     remove_team_member,
+    review_team_join_request,
     search_teams,
     set_current_team_for_user,
 )
@@ -39,6 +42,10 @@ class RemoveTeamMemberInput(BaseModel):
     member_user_id: str = Field(min_length=1, max_length=100)
 
 
+class TeamOwnerActionInput(BaseModel):
+    owner_user_id: str = Field(min_length=1, max_length=100)
+
+
 class TeamRecipeInput(BaseModel):
     user_id: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=160)
@@ -50,8 +57,8 @@ class DeleteTeamRecipeInput(BaseModel):
 
 
 @router.get("/teams/search")
-def find_teams(q: str = ""):
-    return search_teams(q[:100])
+def find_teams(q: str = "", user_id: str | None = None):
+    return search_teams(q[:100], user_id)
 
 
 @router.get("/teams")
@@ -82,13 +89,57 @@ def create_team_route(payload: TeamCreateInput):
     return {"team": team, "members": get_team_members(team["id"]), "message": "Team created successfully."}
 
 
+@router.delete("/teams/{team_id}")
+def delete_team_route(team_id: str, payload: TeamOwnerActionInput):
+    try:
+        delete_team(team_id, payload.owner_user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"message": "Team deleted."}
+
+
 @router.post("/teams/join")
 def join_team(payload: TeamMemberInput):
     try:
         result = add_member_to_team(payload.team_id, payload.user_id, payload.role)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"result": result, "members": get_team_members(payload.team_id), "message": "Member joined team."}
+    message = "Join request sent." if result["request_pending"] else "You are already a team member."
+    return {"result": result, "members": get_team_members(payload.team_id), "message": message}
+
+
+@router.get("/teams/{team_id}/requests")
+def list_team_join_requests(team_id: str, user_id: str):
+    try:
+        return get_team_join_requests(team_id, user_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/teams/{team_id}/requests/{requester_user_id}/accept")
+def accept_team_join_request(team_id: str, requester_user_id: str, payload: TeamOwnerActionInput):
+    try:
+        review_team_join_request(team_id, payload.owner_user_id, requester_user_id, accept=True)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"members": get_team_members(team_id), "requests": get_team_join_requests(team_id, payload.owner_user_id)}
+
+
+@router.delete("/teams/{team_id}/requests/{requester_user_id}")
+def reject_team_join_request(team_id: str, requester_user_id: str, payload: TeamOwnerActionInput):
+    try:
+        review_team_join_request(team_id, payload.owner_user_id, requester_user_id, accept=False)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"requests": get_team_join_requests(team_id, payload.owner_user_id)}
 
 
 @router.delete("/teams/{team_id}/members/{member_user_id}")
