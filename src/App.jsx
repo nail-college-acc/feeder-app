@@ -13,14 +13,18 @@ import {
   Download,
   ExternalLink,
   FlaskConical,
+  House,
   Leaf,
   Menu,
   Plus,
   Save,
   Search,
+  ShieldCheck,
   Sparkles,
   Sprout,
   Trash2,
+  User,
+  Users,
   Wheat,
   X,
 } from 'lucide-react';
@@ -88,6 +92,49 @@ function readSavedIngredients() {
   }
 }
 
+function readStorageJSON(key, fallback) {
+  try {
+    const value = window.localStorage.getItem(key);
+    if (value == null) return fallback;
+    const parsed = JSON.parse(value);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStorageJSON(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const defaultAccount = {
+  id: 'demo-user',
+  name: 'Petani Demo',
+  email: 'petani@feeder.app',
+  farm: 'Kebun Pakan Sentosa',
+  role: 'Pemilik ternak',
+};
+
+const defaultTeams = [
+  {
+    id: 'team-sentosa',
+    name: 'Tim Pakan Sentosa',
+    farm: 'Kebun Pakan Sentosa',
+    location: 'Sukabumi',
+    description: 'Koordinasi formulasi pakan, produksi harian, dan review hasil ternak.',
+    members: [
+      { id: 'demo-user', name: 'Petani Demo', email: 'petani@feeder.app', role: 'Pemilik ternak', status: 'owner' },
+      { id: 'rina', name: 'Rina', email: 'rina@feeder.app', role: 'Analisis pakan', status: 'member' },
+      { id: 'budi', name: 'Budi', email: 'budi@feeder.app', role: 'Peternak lapangan', status: 'member' },
+    ],
+  },
+];
+
 async function api(path, options) {
   const response = await fetch(`/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -103,9 +150,18 @@ async function api(path, options) {
 function App() {
   const [ingredients, setIngredients] = useState([]);
   const [customIngredients, setCustomIngredients] = useState(readSavedIngredients);
-  const [activePage, setActivePageState] = useState(() => (
-    window.location.pathname === '/docs/guide' ? 'Feed guide' : 'Overview'
-  ));
+  const [user, setUser] = useState(() => readStorageJSON('feeder-user', null));
+  const [teams, setTeams] = useState(() => readStorageJSON('feeder-teams', []));
+  const [activeTeamId, setActiveTeamId] = useState(() => readStorageJSON('feeder-active-team', null));
+  const [activePage, setActivePageState] = useState(() => {
+    const route = window.location.pathname;
+    if (route === '/' || route === '/home') return 'Home';
+    if (route === '/dash') return 'Overview';
+    if (route === '/login') return 'Login';
+    if (route === '/signup') return 'Signup';
+    if (route === '/docs/guide') return 'Feed guide';
+    return 'Home';
+  });
   const [recipeName, setRecipeName] = useState('Itik grower · Racikan 01');
   const [items, setItems] = useState(seedRecipe);
   const [analysis, setAnalysis] = useState(null);
@@ -124,25 +180,113 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function setActivePage(page) {
-    const isGuide = page === 'Feed guide';
-    const nextPath = isGuide ? '/docs/guide' : '/';
+    const routeMap = {
+      Home: '/',
+      Overview: '/dash',
+      'Recipe builder': '/dash',
+      'Recipe advisor': '/dash',
+      Ingredients: '/dash',
+      'My recipes': '/dash',
+      Teams: '/dash',
+      Account: '/login',
+      Login: '/login',
+      Signup: '/signup',
+      'Feed guide': '/docs/guide',
+    };
+    const nextPath = routeMap[page] || '/';
     const nextState = { page };
-    if (isGuide && window.location.pathname !== nextPath) {
-      window.history.replaceState({ page: activePage }, '', window.location.href);
-      window.history.pushState(nextState, '', nextPath);
-    } else if (!isGuide && window.location.pathname !== nextPath) {
+    if (window.location.pathname !== nextPath) {
       window.history.pushState(nextState, '', nextPath);
     } else {
-      window.history.replaceState(nextState, '', window.location.href);
+      window.history.replaceState(nextState, '', nextPath);
     }
     setActivePageState(page);
     window.scrollTo(0, 0);
   }
 
+  function logout() {
+    setUser(null);
+    setActivePage('Home');
+  }
+
   useEffect(() => {
-    function handlePopState(event) {
+    if (user) {
+      writeStorageJSON('feeder-user', user);
+    } else {
+      window.localStorage.removeItem('feeder-user');
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setTeams([]);
+      setActiveTeamId(null);
+      return undefined;
+    }
+
+    let mounted = true;
+    Promise.all([
+      api(`/teams?user_id=${encodeURIComponent(user.id)}`),
+      api(`/teams/current?user_id=${encodeURIComponent(user.id)}`),
+    ])
+      .then(([teamList, currentTeamResponse]) => {
+        if (!mounted) return;
+        const nextTeams = Array.isArray(teamList) ? teamList : [];
+        setTeams(nextTeams);
+        setActiveTeamId(currentTeamResponse?.id || null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setTeams([]);
+        setActiveTeamId(null);
+      });
+
+    return () => { mounted = false; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (teams.length) {
+      writeStorageJSON('feeder-teams', teams);
+    } else {
+      window.localStorage.removeItem('feeder-teams');
+    }
+    if (!activeTeamId || !teams.some((team) => team.id === activeTeamId)) {
+      setActiveTeamId(teams[0]?.id || null);
+    }
+    if (activeTeamId) {
+      writeStorageJSON('feeder-active-team', activeTeamId);
+    } else {
+      window.localStorage.removeItem('feeder-active-team');
+    }
+  }, [teams, activeTeamId]);
+
+  useEffect(() => {
+    if (!user?.id || !activeTeamId) {
+      setSavedRecipes(readStorageJSON('feeder-recipes', []));
+      return undefined;
+    }
+
+    let mounted = true;
+    api(`/teams/${encodeURIComponent(activeTeamId)}/recipes?user_id=${encodeURIComponent(user.id)}`)
+      .then((recipes) => {
+        if (mounted) setSavedRecipes(Array.isArray(recipes) ? recipes : []);
+      })
+      .catch((issue) => {
+        if (mounted) setError(issue.message);
+      });
+
+    return () => { mounted = false; };
+  }, [user?.id, activeTeamId]);
+
+  useEffect(() => {
+    function handlePopState() {
       const route = window.location.pathname;
-      setActivePageState(route === '/docs/guide' ? 'Feed guide' : event.state?.page || 'Overview');
+      if (route === '/' || route === '/home') setActivePageState('Home');
+      else if (route === '/dash') setActivePageState('Overview');
+      else if (route === '/login') setActivePageState('Login');
+      else if (route === '/signup') setActivePageState('Signup');
+      else if (route === '/docs/guide') setActivePageState('Feed guide');
+      else setActivePageState('Home');
     }
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -270,21 +414,38 @@ function App() {
     window.setTimeout(() => setNotice(''), 2800);
   }
 
-  function saveRecipe() {
+  async function saveRecipe() {
     if (!items.length) {
       setError('Tambahkan bahan sebelum menyimpan racikan.');
       return;
     }
     const recipe = {
-      id: Date.now(),
       name: recipeName.trim() || 'Racikan tanpa nama',
       items,
       savedAt: new Date().toISOString(),
     };
-    const next = [recipe, ...savedRecipes];
+    if (user?.id && activeTeamId) {
+      try {
+        const saved = await api(`/teams/${encodeURIComponent(activeTeamId)}/recipes`, {
+          method: 'POST',
+          body: JSON.stringify({ ...recipe, user_id: user.id }),
+        });
+        setSavedRecipes((current) => [saved, ...current]);
+        setNotice(`Racikan tersimpan untuk tim ${currentTeam?.name || ''}.`);
+        window.setTimeout(() => setNotice(''), 2800);
+      } catch (issue) {
+        setError(issue.message || 'Racikan gagal disimpan.');
+      }
+      return;
+    }
+    const localRecipe = { ...recipe, id: Date.now() };
+    const next = [localRecipe, readStorageJSON('feeder-recipes', [])].flat().slice(0, 100);
+    if (!writeStorageJSON('feeder-recipes', next)) {
+      setError('Racikan tidak dapat disimpan di perangkat ini.');
+      return;
+    }
     setSavedRecipes(next);
-    localStorage.setItem('feeder-recipes', JSON.stringify(next));
-    setNotice('Racikan tersimpan di perangkat ini.');
+    setNotice('Racikan tersimpan di perangkat ini. Gabung tim untuk menyimpan racikan bersama.');
     window.setTimeout(() => setNotice(''), 2800);
   }
 
@@ -296,10 +457,22 @@ function App() {
     window.setTimeout(() => setNotice(''), 2800);
   }
 
-  function deleteSavedRecipe(id) {
+  async function deleteSavedRecipe(id) {
+    const recipe = savedRecipes.find((saved) => saved.id === id);
+    if (recipe?.team_id && user?.id) {
+      try {
+        await api(`/teams/${encodeURIComponent(recipe.team_id)}/recipes/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ user_id: user.id }),
+        });
+      } catch (issue) {
+        setError(issue.message || 'Racikan gagal dihapus.');
+        return;
+      }
+    }
     const next = savedRecipes.filter((recipe) => recipe.id !== id);
     setSavedRecipes(next);
-    localStorage.setItem('feeder-recipes', JSON.stringify(next));
+    if (!recipe?.team_id) writeStorageJSON('feeder-recipes', next);
   }
 
   function exportRecipe() {
@@ -317,6 +490,7 @@ function App() {
   }
 
   const currentStage = stages.find((item) => item.id === stage) || stages[1];
+  const currentTeam = teams.find((team) => team.id === activeTeamId) || null;
   const navItems = [
     { id: 'Overview', label: 'Ringkasan', icon: Sprout },
     { id: 'Recipe builder', label: 'Peracik pakan', icon: FlaskConical },
@@ -325,6 +499,8 @@ function App() {
     { id: 'My recipes', label: 'Racikan tersimpan', icon: BookOpen },
   ];
   const pageLabels = Object.fromEntries(navItems.map(({ id, label }) => [id, label]));
+  pageLabels.Login = 'Masuk';
+  pageLabels.Signup = 'Daftar';
 
   if (activePage === 'Feed guide') {
     return (
@@ -337,6 +513,82 @@ function App() {
         </header>
         <main className="guide-route-content">
           <FeedGuidePage setActivePage={setActivePage} />
+          <footer className="page-footer">
+            <span>Mendukung pakan ternak yang lebih seimbang.</span>
+            <span className="footer-note"><Leaf size={14} /> Nilai bahan merupakan perkiraan. Konsultasikan formulasi dengan ahli nutrisi ternak.</span>
+          </footer>
+        </main>
+      </div>
+    );
+  }
+
+  if (activePage === 'Home') {
+    return (
+      <div className="landing-shell">
+        <header className="landing-header">
+          <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Home'); }}>
+            <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
+            <span className="brand-name">feeder<span>.</span></span>
+          </a>
+          <nav className="landing-nav" aria-label="Navigasi halaman depan">
+            <button className="landing-nav-link" onClick={() => setActivePage('Overview')}>Dashboard</button>
+            <button className="landing-nav-link" onClick={() => setActivePage('Feed guide')}>Panduan</button>
+          </nav>
+          <div className="landing-auth">
+            {user ? (
+              <>
+                <button className="button button-light auth-top-button" onClick={() => setActivePage('Overview')}>
+                  <User size={15} /> {user.name.split(' ')[0]}
+                </button>
+                <button className="button button-outline auth-top-button" onClick={logout}>Keluar</button>
+              </>
+            ) : (
+              <>
+                <span className="auth-status">Belum masuk</span>
+                <button className="button button-light auth-top-button" onClick={() => setActivePage('Login')}>Masuk</button>
+                <button className="button button-primary auth-top-button" onClick={() => setActivePage('Signup')}>Daftar</button>
+              </>
+            )}
+          </div>
+        </header>
+        <main className="landing-content">
+          {error && <div className="alert error-alert"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')} aria-label="Tutup pesan"><X size={16} /></button></div>}
+          {notice && <div className="alert success-alert"><Check size={17} /><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Tutup pesan"><X size={16} /></button></div>}
+          <HomePage
+            user={user}
+            setActivePage={setActivePage}
+            activeTeam={currentTeam}
+          />
+          <footer className="page-footer">
+            <span>Mendukung pakan ternak yang lebih seimbang.</span>
+            <span className="footer-note"><Leaf size={14} /> Nilai bahan merupakan perkiraan. Konsultasikan formulasi dengan ahli nutrisi ternak.</span>
+          </footer>
+        </main>
+      </div>
+    );
+  }
+
+  if (activePage === 'Login' || activePage === 'Signup') {
+    return (
+      <div className="auth-route-shell">
+        <header className="auth-route-header">
+          <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Home'); }}>
+            <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
+            <span className="brand-name">feeder<span>.</span></span>
+          </a>
+          <button className="button button-light" onClick={() => setActivePage('Home')}>Kembali ke beranda</button>
+        </header>
+        <main className="auth-route-content">
+          {error && <div className="alert error-alert"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError('')} aria-label="Tutup pesan"><X size={16} /></button></div>}
+          {notice && <div className="alert success-alert"><Check size={17} /><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Tutup pesan"><X size={16} /></button></div>}
+          <AuthPage
+            mode={activePage === 'Signup' ? 'signup' : 'login'}
+            user={user}
+            setUser={setUser}
+            setNotice={setNotice}
+            setError={setError}
+            setActivePage={setActivePage}
+          />
           <footer className="page-footer">
             <span>Mendukung pakan ternak yang lebih seimbang.</span>
             <span className="footer-note"><Leaf size={14} /> Nilai bahan merupakan perkiraan. Konsultasikan formulasi dengan ahli nutrisi ternak.</span>
@@ -366,6 +618,16 @@ function App() {
             </button>
           ))}
         </nav>
+
+        <div className="sidebar-team-box">
+          <div className="sidebar-team-header">
+            <span className="eyebrow">TIM SAAT INI</span>
+            <Users size={15} />
+          </div>
+          <strong>{currentTeam ? currentTeam.name : 'No team joined'}</strong>
+          <small>{currentTeam ? currentTeam.location || currentTeam.farm || 'Tim aktif' : 'Join a team to collaborate.'}</small>
+          <button className="button button-light" onClick={() => setActivePage('Teams')}>{currentTeam ? 'Kelola tim' : 'Gabung tim'}</button>
+        </div>
       </aside>
 
       {mobileMenuOpen && <button className="mobile-scrim" aria-label="Tutup menu" onClick={() => setMobileMenuOpen(false)} />}
@@ -373,9 +635,23 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <button className="mobile-menu-button icon-button" aria-label="Buka menu" onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button>
-          <div className="breadcrumb"><span>Beranda</span><ChevronRight size={14} /><strong>{pageLabels[activePage]}</strong></div>
+          <div className="breadcrumb"><span>Beranda</span><ChevronRight size={14} /><strong>{pageLabels[activePage] || activePage}</strong></div>
           <div className="topbar-actions">
             <span className="date-chip"><Clock3 size={15} /> {new Intl.DateTimeFormat(locale, { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' }).format(new Date())}</span>
+            {user ? (
+              <>
+                <button className="button button-light auth-top-button" onClick={() => setActivePage('Home')}>
+                  <User size={15} /> {user.name.split(' ')[0]}
+                </button>
+                <button className="button button-outline auth-top-button" onClick={logout}>Keluar</button>
+              </>
+            ) : (
+              <div className="auth-top-actions">
+                <span className="auth-status">Belum masuk</span>
+                <button className="button button-light auth-top-button" onClick={() => setActivePage('Login')}>Masuk</button>
+                <button className="button button-primary auth-top-button" onClick={() => setActivePage('Signup')}>Daftar</button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -390,9 +666,22 @@ function App() {
               recommendation={recommendation}
               ingredientMap={ingredientMap}
               savedRecipes={savedRecipes}
+              activeTeam={currentTeam}
               setActivePage={setActivePage}
               useRecommendation={useRecommendation}
               loadRecipe={loadRecipe}
+            />
+          )}
+
+          {activePage === 'Teams' && (
+            <TeamsPage
+              user={user}
+              teams={teams}
+              setTeams={setTeams}
+              activeTeamId={activeTeamId}
+              setActiveTeamId={setActiveTeamId}
+              setNotice={setNotice}
+              setError={setError}
             />
           )}
 
@@ -446,6 +735,7 @@ function App() {
               loadRecipe={loadRecipe}
               deleteRecipe={deleteSavedRecipe}
               setActivePage={setActivePage}
+              activeTeam={currentTeam}
             />
           )}
           <footer className="page-footer">
@@ -467,7 +757,554 @@ function PageHeading({ eyebrow, title, description, action }) {
   );
 }
 
-function OverviewPage({ analysis, currentStage, recommendation, ingredientMap, savedRecipes, setActivePage, useRecommendation, loadRecipe }) {
+function HomePage({ user, setActivePage, activeTeam }) {
+  const accountLabel = user?.name || 'Belum masuk';
+  const teamLabel = activeTeam?.name || 'Tim pakan';
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="FEEDER APP"
+        title="Platform pakan yang lebih rapi untuk peternak modern"
+        description="Atur racikan pakan, pantau kebutuhan ternak, dan kolaborasi bersama tim dengan lebih mudah."
+        action={<button className="button button-primary" onClick={() => setActivePage('Overview')}><ArrowRight size={16} /> Masuk dashboard</button>}
+      />
+
+      <section className="hero-card landing-hero">
+        <div className="hero-copy">
+          <div className="hero-kicker"><span className="sparkle-dot"><Sparkles size={13} /></span> MANAJEMEN PAKAN & TIM</div>
+          <h2>Mulai dari halaman depan,<br />selesaikan hingga tim.</h2>
+          <p>Feeder membantu Anda meracik pakan, membandingkan nutrisi, dan memastikan seluruh tim memahami target pakan di setiap fase ternak.</p>
+          <div className="landing-actions">
+            <button className="button button-primary" onClick={() => setActivePage('Recipe builder')}>Buat racikan</button>
+            <button className="button button-light" onClick={() => setActivePage('Teams')}>Kelola tim</button>
+          </div>
+        </div>
+        <div className="hero-art" aria-hidden="true">
+          <div className="sun-disc" />
+          <div className="field field-back" />
+          <div className="field field-front" />
+          <div className="art-stem stem-one"><i /><i /><i /></div>
+          <div className="art-stem stem-two"><i /><i /><i /></div>
+          <div className="art-stem stem-three"><i /><i /></div>
+        </div>
+        <div className="hero-index">LANDING PAGE / 01</div>
+      </section>
+
+      <div className="feature-grid">
+        <div className="panel feature-card">
+          <div className="feature-icon"><House size={18} /></div>
+          <h3>Halaman depan</h3>
+          <p>Memperkenalkan aplikasi, manfaat utama, dan jalur cepat menuju dashboard, pakan, dan tim.</p>
+        </div>
+        <div className="panel feature-card">
+          <div className="feature-icon"><User size={18} /></div>
+          <h3>Akun peternak</h3>
+          <p>Setiap pengguna bisa menyiapkan profil usaha, peran, dan akses cepat ke data pakan dan formulasi.</p>
+        </div>
+        <div className="panel feature-card">
+          <div className="feature-icon"><Users size={18} /></div>
+          <h3>Manajemen tim</h3>
+          <p>Kelola anggota, peran, dan area kerja bersama untuk koordinasi formulasi pakan dan produksi.</p>
+        </div>
+      </div>
+
+      <div className="landing-lower-grid">
+        <section className="panel landing-summary">
+          <div className="panel-heading">
+            <div><span className="eyebrow">AKTIF HARI INI</span><h3>Profil pengguna</h3></div>
+            <ShieldCheck size={18} />
+          </div>
+          <div className="account-summary-box">
+            <strong>{accountLabel}</strong>
+            <span>{user?.email || 'Masuk atau daftar untuk mengatur profil.'}</span>
+            <small>{user?.farm || 'Belum ada usaha terdaftar'}</small>
+          </div>
+          <button className="button button-light" onClick={() => setActivePage('Login')}>Atur akun</button>
+        </section>
+
+        <section className="panel landing-summary">
+          <div className="panel-heading">
+            <div><span className="eyebrow">TIM AKTIF</span><h3>Kerja bersama</h3></div>
+            <Users size={18} />
+          </div>
+          <div className="account-summary-box">
+            <strong>{teamLabel}</strong>
+            <span>{activeTeam?.location || 'Lokasi belum diatur'}</span>
+            <small>{activeTeam?.members?.length || 0} anggota terdaftar</small>
+          </div>
+          <button className="button button-light" onClick={() => setActivePage('Teams')}>Kelola tim</button>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function AuthPage({ mode, user, setUser, setError, setNotice, setActivePage }) {
+  const isSignup = mode === 'signup';
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    farm: '',
+    role: 'Pemilik ternak',
+  });
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const email = form.email.trim();
+    const password = form.password;
+
+    if (!email || !password || (isSignup && !form.name.trim())) {
+      setError(isSignup ? 'Nama, email, dan password harus diisi.' : 'Email dan password harus diisi.');
+      return;
+    }
+    if (isSignup && password.length < 6) {
+      setError('Password harus memiliki sedikitnya 6 karakter.');
+      return;
+    }
+
+    try {
+      const endpoint = isSignup ? '/auth/signup' : '/auth/login';
+      const payload = isSignup
+        ? { name: form.name.trim(), email, password, farm: form.farm.trim(), role: form.role }
+        : { email, password };
+      const response = await api(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      setUser(response.user);
+      setNotice(isSignup ? 'Akun berhasil dibuat. Selamat datang.' : 'Login berhasil.');
+      window.setTimeout(() => setNotice(''), 2600);
+      setActivePage('Home');
+    } catch (issue) {
+      setError(issue.message || 'Gagal memproses akun.');
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow={isSignup ? 'DAFTAR' : 'MASUK'}
+        title={isSignup ? 'Buat akun baru' : 'Masuk ke akun Anda'}
+        description={isSignup ? 'Daftarkan profil peternak dan mulai kelola pakan serta tim bersama.' : 'Akses formulasi pakan, profil usaha, dan tim yang sudah Anda ikuti.'}
+        action={<button className="button button-outline" onClick={() => setActivePage(isSignup ? 'Login' : 'Signup')}>{isSignup ? 'Sudah punya akun?' : 'Belum punya akun?'}</button>}
+      />
+
+      <div className="auth-route-layout">
+        <section className="panel auth-panel auth-stacked-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">{isSignup ? 'PETERNAK BARU' : 'AKSES'}</span><h3>{isSignup ? 'Daftar akun' : 'Masuk ke dashboard'}</h3></div>
+            <ShieldCheck size={18} />
+          </div>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            {isSignup && (
+              <label>
+                <span>Nama lengkap</span>
+                <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nama peternak" />
+              </label>
+            )}
+            <label>
+              <span>Email</span>
+              <input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="nama@feeder.app" />
+            </label>
+            <label>
+              <span>Password</span>
+              <input type="password" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} placeholder="Masukkan password" />
+            </label>
+            {isSignup && (
+              <>
+                <label>
+                  <span>Nama usaha / kebun</span>
+                  <input value={form.farm} onChange={(event) => setForm((current) => ({ ...current, farm: event.target.value }))} placeholder="Kebun pakan Sentosa" />
+                </label>
+                <label>
+                  <span>Peran</span>
+                  <select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>
+                    <option value="Pemilik ternak">Pemilik ternak</option>
+                    <option value="Manager pakan">Manager pakan</option>
+                    <option value="Analis nutrisi">Analis nutrisi</option>
+                    <option value="Peternak lapangan">Peternak lapangan</option>
+                  </select>
+                </label>
+              </>
+            )}
+            <button className="button button-primary" type="submit">{isSignup ? 'Buat akun' : 'Masuk'}</button>
+          </form>
+        </section>
+
+        <section className="panel auth-panel auth-stacked-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">CATATAN</span><h3>Database penyimpanan</h3></div>
+            <ShieldCheck size={18} />
+          </div>
+          <div className="account-card">
+            <strong>{isSignup ? 'Penyimpanan akun aktif' : 'Penyimpanan login aktif'}</strong>
+            <span>Data disimpan di database SQLite lokal yang ada di backend FastAPI.</span>
+            <small>Untuk deployment publik, penggunaan database hosted seperti Supabase/PostgreSQL disarankan.</small>
+          </div>
+          <ul className="feature-list">
+            <li>Signup baru dibuat langsung ke tabel pengguna di backend.</li>
+            <li>Login memvalidasi password yang di-hash sebelum masuk.</li>
+            <li>Tim juga disimpan di database yang sama untuk kolaborasi.</li>
+          </ul>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function AccountPage({ user, setUser, setError, setNotice }) {
+  const [form, setForm] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    farm: user?.farm || '',
+    role: user?.role || 'Pemilik ternak',
+  });
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    const nextUser = {
+      id: user?.id || `user-${Date.now()}`,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      farm: form.farm.trim() || 'Kebun pakan',
+      role: form.role.trim() || 'Pemilik ternak',
+    };
+
+    if (!nextUser.name || !nextUser.email) {
+      setError('Nama dan email akun wajib diisi.');
+      return;
+    }
+
+    setUser(nextUser);
+    setNotice('Profil akun berhasil disimpan.');
+    window.setTimeout(() => setNotice(''), 2800);
+  }
+
+  function useDemoAccount() {
+    setUser(defaultAccount);
+    setNotice('Akun demo aktif.');
+    window.setTimeout(() => setNotice(''), 2600);
+  }
+
+  function logout() {
+    setUser(null);
+    setNotice('Anda keluar dari sesi akun.');
+    window.setTimeout(() => setNotice(''), 2600);
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="AKUN"
+        title="Profil peternak"
+        description="Kelola identitas usaha, data kontak, dan peran Anda di dalam sistem."
+        action={<button className="button button-outline" onClick={logout}>Keluar</button>}
+      />
+
+      <div className="account-layout">
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">INFORMASI</span><h3>Pengaturan akun</h3></div>
+            <ShieldCheck size={18} />
+          </div>
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label>
+              <span>Nama lengkap</span>
+              <input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Masukkan nama Anda" />
+            </label>
+            <label>
+              <span>Email</span>
+              <input type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="nama@feeder.app" />
+            </label>
+            <label>
+              <span>Nama usaha / kebun</span>
+              <input value={form.farm} onChange={(event) => setForm((current) => ({ ...current, farm: event.target.value }))} placeholder="Kebun pakan Sentosa" />
+            </label>
+            <label>
+              <span>Peran</span>
+              <select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>
+                <option value="Pemilik ternak">Pemilik ternak</option>
+                <option value="Manager pakan">Manager pakan</option>
+                <option value="Analis nutrisi">Analis nutrisi</option>
+                <option value="Peternak lapangan">Peternak lapangan</option>
+              </select>
+            </label>
+            <div className="account-actions">
+              <button className="button button-primary" type="submit">Simpan profil</button>
+              <button type="button" className="button button-light" onClick={useDemoAccount}>Gunakan akun demo</button>
+            </div>
+          </form>
+        </section>
+
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">STATUS</span><h3>Ringkasan akun</h3></div>
+            <User size={18} />
+          </div>
+          <div className="account-card">
+            <strong>{user?.name || 'Belum login'}</strong>
+            <span>{user?.email || 'Daftar akun untuk menyiapkan profil.'}</span>
+            <small>{user?.role || 'Peran belum diatur'}</small>
+            <p>{user?.farm || 'Nama usaha belum diisi.'}</p>
+          </div>
+          <ul className="feature-list">
+            <li>Kelola kebiasaan pakan dan formulasi pribadi.</li>
+            <li>Gunakan akun yang sama untuk beberapa tim kerja.</li>
+            <li>Cocok untuk peternak tunggal dan operasi skala kecil.</li>
+          </ul>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function TeamsPage({ user, teams, setTeams, activeTeamId, setActiveTeamId, setNotice, setError }) {
+  const [teamForm, setTeamForm] = useState({ name: '', farm: '', location: '', description: '' });
+  const [teamQuery, setTeamQuery] = useState('');
+  const [teamResults, setTeamResults] = useState([]);
+  const [searchingTeams, setSearchingTeams] = useState(false);
+
+  const activeTeam = teams.find((team) => team.id === activeTeamId) || teams[0] || null;
+
+  useEffect(() => {
+    let mounted = true;
+    setSearchingTeams(true);
+    const timeout = window.setTimeout(() => {
+      api(`/teams/search?q=${encodeURIComponent(teamQuery)}`)
+        .then((results) => {
+          if (mounted) setTeamResults(Array.isArray(results) ? results : []);
+        })
+        .catch((issue) => {
+          if (mounted) setError(issue.message || 'Gagal mencari tim.');
+        })
+        .finally(() => {
+          if (mounted) setSearchingTeams(false);
+        });
+    }, 200);
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(timeout);
+    };
+  }, [teamQuery, setError]);
+
+  async function selectTeam(team) {
+    if (!user?.id) {
+      setError('Login diperlukan untuk memilih tim.');
+      return;
+    }
+    try {
+      await api('/teams/current', {
+        method: 'POST',
+        body: JSON.stringify({ team_id: team.id, user_id: user.id }),
+      });
+      setActiveTeamId(team.id);
+    } catch (issue) {
+      setError(issue.message || 'Gagal memilih tim.');
+    }
+  }
+
+  async function joinTeam(team) {
+    if (!user?.id) {
+      setError('Login diperlukan untuk bergabung dengan tim.');
+      return;
+    }
+    try {
+      const response = await api('/teams/join', {
+        method: 'POST',
+        body: JSON.stringify({ team_id: team.id, user_id: user.id, role: user.role || 'Peternak lapangan' }),
+      });
+      const joinedTeam = {
+        ...team,
+        members: response.members.map((member) => ({
+          ...member,
+          status: member.id === team.created_by ? 'owner' : 'member',
+        })),
+      };
+      setTeams((current) => [joinedTeam, ...current.filter((candidate) => candidate.id !== team.id)]);
+      setActiveTeamId(team.id);
+      setNotice(response.result.already_member ? `Anda sudah menjadi anggota ${team.name}.` : `Berhasil bergabung dengan ${team.name}.`);
+      window.setTimeout(() => setNotice(''), 2800);
+    } catch (issue) {
+      setError(issue.message || 'Gagal bergabung dengan tim.');
+    }
+  }
+
+  async function removeMember(member) {
+    if (!activeTeam || !user?.id) return;
+    try {
+      const response = await api(
+        `/teams/${encodeURIComponent(activeTeam.id)}/members/${encodeURIComponent(member.id)}`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({
+            team_id: activeTeam.id,
+            actor_user_id: user.id,
+            member_user_id: member.id,
+          }),
+        },
+      );
+      const nextMembers = response.members.map((currentMember) => ({
+        ...currentMember,
+        status: currentMember.id === activeTeam.created_by ? 'owner' : 'member',
+      }));
+      setTeams((current) => current.map((team) => team.id === activeTeam.id
+        ? { ...team, members: nextMembers }
+        : team));
+      setNotice(`${member.name} telah dihapus dari tim.`);
+      window.setTimeout(() => setNotice(''), 2800);
+    } catch (issue) {
+      setError(issue.message || 'Gagal menghapus anggota tim.');
+    }
+  }
+
+  async function createTeam(event) {
+    event.preventDefault();
+    if (!user?.id) {
+      setError('Login diperlukan sebelum membuat tim.');
+      return;
+    }
+    if (!teamForm.name.trim()) {
+      setError('Nama tim wajib diisi.');
+      return;
+    }
+
+    try {
+      const response = await api('/teams', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: teamForm.name,
+          farm: teamForm.farm,
+          location: teamForm.location,
+          description: teamForm.description,
+          user_id: user.id,
+        }),
+      });
+      const savedTeam = response.team;
+      const enrichedTeam = { ...savedTeam, members: response.members || [] };
+      setTeams((current) => [enrichedTeam, ...current.filter((team) => team.id !== savedTeam.id)]);
+      setActiveTeamId(savedTeam.id);
+      await api('/teams/current', {
+        method: 'POST',
+        body: JSON.stringify({ team_id: savedTeam.id, user_id: user.id, role: user.role || 'Pemilik ternak' }),
+      });
+      setTeamForm({ name: '', farm: '', location: '', description: '' });
+      setNotice(`Tim “${savedTeam.name}” berhasil dibuat.`);
+      window.setTimeout(() => setNotice(''), 2800);
+    } catch (issue) {
+      setError(issue.message || 'Gagal membuat tim.');
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="TIM"
+        title="Manajemen tim kerja"
+        description="Buat tim, pilih anggota, dan koordinasikan formulasi pakan untuk seluruh operasional."
+        action={<button className="button button-primary" onClick={() => setActiveTeamId(activeTeam?.id || teams[0]?.id)}>{activeTeam?.name || 'Pilih tim'}</button>}
+      />
+
+      <div className="team-layout">
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">BUAT TIM</span><h3>Tim baru</h3></div>
+            <Users size={18} />
+          </div>
+          <form className="auth-form" onSubmit={createTeam}>
+            <label>
+              <span>Nama tim</span>
+              <input value={teamForm.name} onChange={(event) => setTeamForm((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Tim Pakan Desa" />
+            </label>
+            <label>
+              <span>Nama usaha</span>
+              <input value={teamForm.farm} onChange={(event) => setTeamForm((current) => ({ ...current, farm: event.target.value }))} placeholder="Usaha pakan unggas" />
+            </label>
+            <label>
+              <span>Lokasi</span>
+              <input value={teamForm.location} onChange={(event) => setTeamForm((current) => ({ ...current, location: event.target.value }))} placeholder="Kabupaten / daerah" />
+            </label>
+            <label>
+              <span>Deskripsi</span>
+              <textarea value={teamForm.description} onChange={(event) => setTeamForm((current) => ({ ...current, description: event.target.value }))} rows="3" placeholder="Tujuan tim dan area kerja" />
+            </label>
+            <button className="button button-primary" type="submit">Buat tim</button>
+          </form>
+        </section>
+
+        <section className="panel auth-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">TIM AKTIF</span><h3>{activeTeam?.name || 'Belum ada tim'}</h3></div>
+            <span className="mini-badge">{activeTeam?.members?.length || 0} orang</span>
+          </div>
+          <div className="team-list">
+            {teams.map((team) => (
+              <button key={team.id} className={`team-select ${team.id === activeTeamId ? 'selected' : ''}`} onClick={() => selectTeam(team)}>
+                <strong>{team.name}</strong>
+                <small>{team.location}</small>
+              </button>
+            ))}
+          </div>
+          {activeTeam && (
+            <div className="member-list">
+              {activeTeam.members.map((member) => (
+                <div key={member.email} className="member-card">
+                  <div>
+                    <strong>{member.name}</strong>
+                    <small>{member.role}</small>
+                  </div>
+                  <div className="member-actions">
+                    <span className={`status-pill ${member.id === activeTeam.created_by ? 'owner' : 'member'}`}>{member.id === activeTeam.created_by ? 'Owner' : 'Anggota'}</span>
+                    {user?.id === activeTeam.created_by && member.id !== activeTeam.created_by && (
+                      <button className="row-remove" onClick={() => removeMember(member)} aria-label={`Hapus ${member.name} dari tim`}><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel auth-panel team-search-panel">
+          <div className="panel-heading">
+            <div><span className="eyebrow">JELAJAHI</span><h3>Cari dan gabung tim</h3></div>
+            <Search size={18} />
+          </div>
+          <label className="team-search-field">
+            <Search size={16} />
+            <input value={teamQuery} onChange={(event) => setTeamQuery(event.target.value)} placeholder="Cari nama tim, usaha, atau lokasi" aria-label="Cari tim" />
+          </label>
+          <div className="team-search-results" aria-live="polite">
+            {searchingTeams && <div className="loading-row">Mencari tim…</div>}
+            {!searchingTeams && teamResults.map((team) => {
+              const isMember = teams.some((joinedTeam) => joinedTeam.id === team.id);
+              return (
+                <article className="team-result" key={team.id}>
+                  <div>
+                    <strong>{team.name}</strong>
+                    <small>{team.farm} · {team.location}</small>
+                    <p>{team.description}</p>
+                    <span>{team.member_count} anggota</span>
+                  </div>
+                  <button className={`button ${isMember ? 'button-light' : 'button-primary'}`} disabled={isMember || !user?.id} onClick={() => joinTeam(team)}>
+                    {isMember ? 'Sudah bergabung' : user ? 'Gabung' : 'Login untuk gabung'}
+                  </button>
+                </article>
+              );
+            })}
+            {!searchingTeams && teamResults.length === 0 && <p className="empty-team-results">Tidak ada tim yang cocok dengan pencarian.</p>}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function OverviewPage({ analysis, currentStage, recommendation, ingredientMap, savedRecipes, activeTeam, setActivePage, useRecommendation, loadRecipe }) {
   const nutrients = analysis?.nutrients || defaultNutrients;
   const feedCost = analysis?.cost_per_kg || 0;
   return (
@@ -535,7 +1372,7 @@ function OverviewPage({ analysis, currentStage, recommendation, ingredientMap, s
       </div>
 
       <div className="section-title-row saved-title-row">
-        <div><h2>Baru disimpan</h2><p>Racikan tersimpan di perangkat ini.</p></div>
+        <div><h2>Baru disimpan</h2><p>{activeTeam ? `Dibagikan dengan tim ${activeTeam.name}.` : 'Racikan tersimpan di perangkat ini.'}</p></div>
         <button className="text-button" onClick={() => setActivePage('My recipes')}>Semua racikan <ArrowRight size={15} /></button>
       </div>
       {savedRecipes.length ? (
@@ -880,10 +1717,10 @@ function CustomIngredientForm({ onSave, onCancel }) {
   );
 }
 
-function SavedRecipesPage({ recipes, ingredientMap, loadRecipe, deleteRecipe, setActivePage }) {
+function SavedRecipesPage({ recipes, ingredientMap, loadRecipe, deleteRecipe, setActivePage, activeTeam }) {
   return (
     <>
-      <PageHeading eyebrow="BUKU RACIKAN" title="Racikan tersimpan" description="Racikan yang Anda simpan di perangkat ini." action={<button className="button button-primary" onClick={() => setActivePage('Recipe builder')}><Plus size={17} /> Buat racikan</button>} />
+      <PageHeading eyebrow="BUKU RACIKAN" title="Racikan tersimpan" description={activeTeam ? `Racikan bersama tim ${activeTeam.name}.` : 'Racikan yang disimpan di perangkat ini. Gabung tim untuk menyimpan bersama.'} action={<button className="button button-primary" onClick={() => setActivePage('Recipe builder')}><Plus size={17} /> Buat racikan</button>} />
       {recipes.length ? <div className="saved-recipes-grid">
         {recipes.map((recipe) => {
           const quantity = recipe.items.reduce((sum, item) => sum + item.quantity_kg, 0);

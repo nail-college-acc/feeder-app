@@ -34,11 +34,15 @@ Ingredient profiles are stored in [`backend/data/catalog.json`](./backend/data/c
 
 The interface is in Indonesian. You can add custom ingredients from the ingredient list; these ingredient profiles and saved recipes are stored in that browser's local storage and are not synced between devices or users. Search the catalog by ingredient name, then optionally open the web-search link shown for a query that has no matching result. Web search opens Google in a new tab; Feeder does not scrape or import search results. Verify nutrient values and prices before using custom or catalog data in a real feed formulation.
 
+Authentication and team data are stored in a local SQLite database at `backend/feeder.db` when the FastAPI backend runs. `/api/auth/signup` creates a user record and hashes the password before saving it; `/api/auth/login` verifies stored credentials; `/api/teams` and related routes persist team records and memberships. On Vercel, the database is initialized under `/tmp` because the deployed application files are read-only. Vercel's temporary filesystem is not durable or shared between function instances, so accounts, teams, and shared recipes may disappear; use a hosted database such as PostgreSQL or Supabase for persistent production data. Set `FEEDER_DB_PATH` to override the database path where a persistent writable disk is available.
+
+Saved recipes are associated with the active team and stored in SQLite when a signed-in team member saves them. Team members can search public team listings, join a team, and team owners can remove members. If the user has not joined a team, saved recipes remain in that browser's local storage.
+
 ## Deploy to Vercel
 
 Import the project into Vercel and deploy from the repository root. Vercel builds the Vite frontend and serves the Python ASGI app at `api/index.py`; `/api/*` requests are rewritten to that function. The dependencies for the Python function are listed in `requirements.txt`.
 
-The standalone Bahasa Indonesia user guide is available at `/docs/guide`; Vercel rewrites direct requests for that path to the frontend entry point.
+The landing page is available at `/` (with `/home` as an alias), and the dashboard is available at `/dash`. Login and signup are available at `/login` and `/signup`. Vercel rewrites those direct requests and the standalone Bahasa Indonesia guide at `/docs/guide` to the frontend entry point.
 
 ## API
 
