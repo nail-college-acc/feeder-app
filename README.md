@@ -38,6 +38,8 @@ The interface is in Indonesian. You can add custom ingredients from the ingredie
 
 Import the project into Vercel and deploy from the repository root. Vercel builds the Vite frontend and serves the Python ASGI app at `api/index.py`; `/api/*` requests are rewritten to that function. The dependencies for the Python function are listed in `requirements.txt`.
 
+The standalone Bahasa Indonesia user guide is available at `/docs/guide`; Vercel rewrites direct requests for that path to the frontend entry point.
+
 ## API
 
 - `GET /api/health` — health check

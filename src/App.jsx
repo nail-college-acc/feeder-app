@@ -103,7 +103,9 @@ async function api(path, options) {
 function App() {
   const [ingredients, setIngredients] = useState([]);
   const [customIngredients, setCustomIngredients] = useState(readSavedIngredients);
-  const [activePage, setActivePage] = useState('Overview');
+  const [activePage, setActivePageState] = useState(() => (
+    window.location.pathname === '/docs/guide' ? 'Feed guide' : 'Overview'
+  ));
   const [recipeName, setRecipeName] = useState('Itik grower · Racikan 01');
   const [items, setItems] = useState(seedRecipe);
   const [analysis, setAnalysis] = useState(null);
@@ -120,6 +122,31 @@ function App() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  function setActivePage(page) {
+    const isGuide = page === 'Feed guide';
+    const nextPath = isGuide ? '/docs/guide' : '/';
+    const nextState = { page };
+    if (isGuide && window.location.pathname !== nextPath) {
+      window.history.replaceState({ page: activePage }, '', window.location.href);
+      window.history.pushState(nextState, '', nextPath);
+    } else if (!isGuide && window.location.pathname !== nextPath) {
+      window.history.pushState(nextState, '', nextPath);
+    } else {
+      window.history.replaceState(nextState, '', window.location.href);
+    }
+    setActivePageState(page);
+    window.scrollTo(0, 0);
+  }
+
+  useEffect(() => {
+    function handlePopState(event) {
+      const route = window.location.pathname;
+      setActivePageState(route === '/docs/guide' ? 'Feed guide' : event.state?.page || 'Overview');
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     api('/ingredients')
@@ -299,6 +326,26 @@ function App() {
   ];
   const pageLabels = Object.fromEntries(navItems.map(({ id, label }) => [id, label]));
 
+  if (activePage === 'Feed guide') {
+    return (
+      <div className="guide-route">
+        <header className="guide-route-header">
+          <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Overview'); }}>
+            <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
+            <span className="brand-name">feeder<span>.</span></span>
+          </a>
+        </header>
+        <main className="guide-route-content">
+          <FeedGuidePage setActivePage={setActivePage} />
+          <footer className="page-footer">
+            <span>Mendukung pakan ternak yang lebih seimbang.</span>
+            <span className="footer-note"><Leaf size={14} /> Nilai bahan merupakan perkiraan. Konsultasikan formulasi dengan ahli nutrisi ternak.</span>
+          </footer>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
@@ -373,6 +420,7 @@ function App() {
               recommendation={recommendation}
               ingredientMap={ingredientMap}
               useRecommendation={useRecommendation}
+              openGuide={() => setActivePage('Feed guide')}
             />
           )}
 
@@ -615,7 +663,7 @@ function AddIngredientDropdown({ ingredients, items, addIngredient }) {
   );
 }
 
-function AdvisorPage({ stage, setStage, recommendation, ingredientMap, useRecommendation }) {
+function AdvisorPage({ stage, setStage, recommendation, ingredientMap, useRecommendation, openGuide }) {
   const [batchSize, setBatchSize] = useState(100);
   return (
     <>
@@ -650,9 +698,49 @@ function AdvisorPage({ stage, setStage, recommendation, ingredientMap, useRecomm
         </div>
         <aside className="advisor-aside">
           <div className="aside-illustration"><span className="circle-one" /><span className="circle-two" /><div className="illustration-leaf"><Sprout size={50} /></div><span className="illustration-caption">AWAL YANG BAIK</span></div>
-          <div className="aside-copy"><span className="eyebrow">CATATAN FEEDER</span><h3>Kebutuhan setiap ternak berbeda.</h3><p>Contoh racikan ini menggunakan nilai bahan umum. Bahan lokal, jenis ternak, iklim, dan cara pemeliharaan juga berpengaruh.</p><button className="text-button" onClick={() => document.getElementById('advisor-guidance')?.scrollIntoView({ behavior: 'smooth' })}>Baca panduan <ArrowRight size={14} /></button></div>
-          <div className="nutritionist-card" id="advisor-guidance"><CircleHelp size={17} /><p>Untuk produksi, mintalah ahli nutrisi unggas meninjau formulasi pakan Anda.</p></div>
+          <div className="aside-copy"><span className="eyebrow">CATATAN FEEDER</span><h3>Kebutuhan setiap ternak berbeda.</h3><p>Contoh racikan ini menggunakan nilai bahan umum. Bahan lokal, jenis ternak, iklim, dan cara pemeliharaan juga berpengaruh.</p><button className="text-button" onClick={openGuide}>Baca buku panduan <ArrowRight size={14} /></button></div>
+          <div className="nutritionist-card"><CircleHelp size={17} /><p>Untuk produksi, mintalah ahli nutrisi unggas meninjau formulasi pakan Anda.</p></div>
         </aside>
+      </div>
+    </>
+  );
+}
+
+function FeedGuidePage({ setActivePage }) {
+  return (
+    <>
+      <PageHeading
+        eyebrow="PANDUAN FEEDER"
+        title="Buku panduan meracik pakan"
+        description="Panduan ringkas untuk memahami rekomendasi dan menyusun racikan di Feeder."
+        action={<button className="button button-outline" onClick={() => setActivePage('Recipe advisor')}><ArrowRight className="back-arrow" size={15} /> Kembali ke rekomendasi</button>}
+      />
+      <div className="feed-guide-layout">
+        <nav className="panel feed-guide-index" aria-label="Daftar isi buku panduan">
+          <span className="eyebrow">DAFTAR ISI</span>
+          <a href="#guide-start">Memulai dari rekomendasi</a>
+          <a href="#guide-customize">Menyesuaikan racikan</a>
+          <a href="#guide-ingredients">Memahami bahan dan nutrisi</a>
+          <a href="#guide-practical">Menggunakan data dengan bijak</a>
+        </nav>
+        <article className="panel feed-guide-content">
+          <section id="guide-start">
+            <span className="guide-number">01</span>
+            <div><h2>Memulai dari rekomendasi</h2><p>Pilih tahap ternak pada halaman rekomendasi untuk melihat contoh racikan awal. Angka komposisi menunjukkan bagian tiap bahan dalam campuran, sedangkan kolom ukuran racikan mengubah jumlah kilogram sesuai kebutuhan.</p><p>Gunakan tombol <strong>Sesuaikan racikan</strong> untuk menyalin contoh tersebut ke peracik. Racikan kemudian dapat diubah sebelum disimpan.</p></div>
+          </section>
+          <section id="guide-customize">
+            <span className="guide-number">02</span>
+            <div><h2>Menyesuaikan racikan</h2><p>Di halaman peracik, ubah jumlah setiap bahan dalam kilogram. Feeder menghitung kembali persentase komposisi, perkiraan nilai nutrisi, dan biaya berdasarkan jumlah yang dimasukkan.</p><p>Gunakan <strong>Ekspor CSV</strong> untuk mengunduh komposisi racikan. Racikan dan bahan buatan sendiri tersimpan secara lokal di browser ini.</p></div>
+          </section>
+          <section id="guide-ingredients">
+            <span className="guide-number">03</span>
+            <div><h2>Memahami bahan dan nutrisi</h2><p>Daftar bahan menampilkan estimasi protein, energi metabolis, serat, lemak, kalsium, fosfor, dan biaya per kilogram. Energi ditampilkan dalam MJ/kg, berat dalam kilogram, dan biaya dalam rupiah.</p><p>Anda dapat menambahkan bahan sendiri dengan mengisi profil nutrisinya. Gunakan nilai dari label pemasok atau hasil analisis laboratorium dengan basis pengukuran yang konsisten. Tautan pencarian web hanya membuka pencarian eksternal; Feeder tidak memverifikasi atau mengimpor hasilnya.</p></div>
+          </section>
+          <section id="guide-practical">
+            <span className="guide-number">04</span>
+            <div><h2>Menggunakan data dengan bijak</h2><p>Nilai bahan katalog dan harga di aplikasi adalah perkiraan untuk perencanaan, bukan penawaran harga langsung. Kandungan dapat berubah menurut pemasok, proses, kadar air, dan mutu bahan.</p><p>Rekomendasi merupakan titik awal, bukan formulasi yang dijamin memenuhi kebutuhan setiap ternak. Sebelum digunakan untuk produksi, tinjau racikan bersama ahli nutrisi unggas dan sesuaikan dengan jenis, umur, tujuan produksi, bahan lokal, serta aturan yang berlaku.</p></div>
+          </section>
+        </article>
       </div>
     </>
   );
