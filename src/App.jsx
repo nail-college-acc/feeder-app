@@ -508,7 +508,7 @@ function App() {
         <header className="guide-route-header">
           <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Overview'); }}>
             <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
-            <span className="brand-name">feeder<span>.</span></span>
+            <span className="brand-name">PinicFarm</span>
           </a>
         </header>
         <main className="guide-route-content">
@@ -528,7 +528,7 @@ function App() {
         <header className="landing-header">
           <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Home'); }}>
             <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
-            <span className="brand-name">feeder<span>.</span></span>
+            <span className="brand-name">PinicFarm</span>
           </a>
           <nav className="landing-nav" aria-label="Navigasi halaman depan">
             <button className="landing-nav-link" onClick={() => setActivePage('Overview')}>Dashboard</button>
@@ -574,7 +574,7 @@ function App() {
         <header className="auth-route-header">
           <a className="brand" href="/" onClick={(event) => { event.preventDefault(); setActivePage('Home'); }}>
             <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
-            <span className="brand-name">feeder<span>.</span></span>
+            <span className="brand-name">PinicFarm</span>
           </a>
           <button className="button button-light" onClick={() => setActivePage('Home')}>Kembali ke beranda</button>
         </header>
@@ -603,7 +603,7 @@ function App() {
       <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
         <a className="brand" href="#" onClick={(event) => { event.preventDefault(); setActivePage('Overview'); }}>
           <span className="brand-mark"><Sprout size={21} strokeWidth={2.4} /></span>
-          <span className="brand-name">feeder<span>.</span></span>
+          <span className="brand-name">PinicFarm</span>
         </a>
         <div className="nav-label">MENU UTAMA</div>
         <nav className="main-nav" aria-label="Navigasi utama">
@@ -764,7 +764,7 @@ function HomePage({ user, setActivePage, activeTeam }) {
   return (
     <>
       <PageHeading
-        eyebrow="FEEDER APP"
+        eyebrow="PINICFARM"
         title="Platform pakan yang lebih rapi untuk peternak modern"
         description="Atur racikan pakan, pantau kebutuhan ternak, dan kolaborasi bersama tim dengan lebih mudah."
         action={<button className="button button-primary" onClick={() => setActivePage('Overview')}><ArrowRight size={16} /> Masuk dashboard</button>}
@@ -774,7 +774,7 @@ function HomePage({ user, setActivePage, activeTeam }) {
         <div className="hero-copy">
           <div className="hero-kicker"><span className="sparkle-dot"><Sparkles size={13} /></span> MANAJEMEN PAKAN & TIM</div>
           <h2>Mulai dari halaman depan,<br />selesaikan hingga tim.</h2>
-          <p>Feeder membantu Anda meracik pakan, membandingkan nutrisi, dan memastikan seluruh tim memahami target pakan di setiap fase ternak.</p>
+          <p>PinicFarm membantu Anda meracik pakan, membandingkan nutrisi, dan memastikan seluruh tim memahami target pakan di setiap fase ternak.</p>
           <div className="landing-actions">
             <button className="button button-primary" onClick={() => setActivePage('Recipe builder')}>Buat racikan</button>
             <button className="button button-light" onClick={() => setActivePage('Teams')}>Kelola tim</button>
@@ -793,9 +793,9 @@ function HomePage({ user, setActivePage, activeTeam }) {
 
       <div className="feature-grid">
         <div className="panel feature-card">
-          <div className="feature-icon"><House size={18} /></div>
-          <h3>Halaman depan</h3>
-          <p>Memperkenalkan aplikasi, manfaat utama, dan jalur cepat menuju dashboard, pakan, dan tim.</p>
+          <div className="feature-icon"><FlaskConical size={18} /></div>
+          <h3>Peracik pakan</h3>
+          <p>Susun komposisi bahan, lihat perkiraan nutrisi dan biaya, lalu simpan racikan untuk digunakan kembali.</p>
         </div>
         <div className="panel feature-card">
           <div className="feature-icon"><User size={18} /></div>
@@ -1626,7 +1626,7 @@ function AdvisorPage({ stage, setStage, recommendation, ingredientMap, useRecomm
         </div>
         <aside className="advisor-aside">
           <div className="aside-illustration"><span className="circle-one" /><span className="circle-two" /><div className="illustration-leaf"><Sprout size={50} /></div><span className="illustration-caption">AWAL YANG BAIK</span></div>
-          <div className="aside-copy"><span className="eyebrow">CATATAN FEEDER</span><h3>Kebutuhan setiap ternak berbeda.</h3><p>Contoh racikan ini menggunakan nilai bahan umum. Bahan lokal, jenis ternak, iklim, dan cara pemeliharaan juga berpengaruh.</p><button className="text-button" onClick={openGuide}>Baca buku panduan <ArrowRight size={14} /></button></div>
+          <div className="aside-copy"><span className="eyebrow">CATATAN PINICFARM</span><h3>Kebutuhan setiap ternak berbeda.</h3><p>Contoh racikan ini menggunakan nilai bahan umum. Bahan lokal, jenis ternak, iklim, dan cara pemeliharaan juga berpengaruh.</p><button className="text-button" onClick={openGuide}>Baca buku panduan <ArrowRight size={14} /></button></div>
           <div className="nutritionist-card"><CircleHelp size={17} /><p>Untuk produksi, mintalah ahli nutrisi unggas meninjau formulasi pakan Anda.</p></div>
         </aside>
       </div>
@@ -1638,9 +1638,9 @@ function FeedGuidePage({ setActivePage }) {
   return (
     <>
       <PageHeading
-        eyebrow="PANDUAN FEEDER"
+        eyebrow="PANDUAN PINICFARM"
         title="Buku panduan meracik pakan"
-        description="Panduan ringkas untuk memahami rekomendasi dan menyusun racikan di Feeder."
+        description="Panduan ringkas untuk memahami rekomendasi dan menyusun racikan di PinicFarm."
         action={<button className="button button-outline" onClick={() => setActivePage('Recipe advisor')}><ArrowRight className="back-arrow" size={15} /> Kembali ke rekomendasi</button>}
       />
       <div className="feed-guide-layout">
@@ -1658,11 +1658,11 @@ function FeedGuidePage({ setActivePage }) {
           </section>
           <section id="guide-customize">
             <span className="guide-number">02</span>
-            <div><h2>Menyesuaikan racikan</h2><p>Di halaman peracik, ubah jumlah setiap bahan dalam kilogram. Feeder menghitung kembali persentase komposisi, perkiraan nilai nutrisi, dan biaya berdasarkan jumlah yang dimasukkan.</p><p>Gunakan <strong>Ekspor CSV</strong> untuk mengunduh komposisi racikan. Racikan dan bahan buatan sendiri tersimpan secara lokal di browser ini.</p></div>
+            <div><h2>Menyesuaikan racikan</h2><p>Di halaman peracik, ubah jumlah setiap bahan dalam kilogram. PinicFarm menghitung kembali persentase komposisi, perkiraan nilai nutrisi, dan biaya berdasarkan jumlah yang dimasukkan.</p><p>Gunakan <strong>Ekspor CSV</strong> untuk mengunduh komposisi racikan. Racikan dan bahan buatan sendiri tersimpan secara lokal di browser ini.</p></div>
           </section>
           <section id="guide-ingredients">
             <span className="guide-number">03</span>
-            <div><h2>Memahami bahan dan nutrisi</h2><p>Daftar bahan menampilkan estimasi protein, energi metabolis, serat, lemak, kalsium, fosfor, dan biaya per kilogram. Energi ditampilkan dalam MJ/kg, berat dalam kilogram, dan biaya dalam rupiah.</p><p>Anda dapat menambahkan bahan sendiri dengan mengisi profil nutrisinya. Gunakan nilai dari label pemasok atau hasil analisis laboratorium dengan basis pengukuran yang konsisten. Tautan pencarian web hanya membuka pencarian eksternal; Feeder tidak memverifikasi atau mengimpor hasilnya.</p></div>
+            <div><h2>Memahami bahan dan nutrisi</h2><p>Daftar bahan menampilkan estimasi protein, energi metabolis, serat, lemak, kalsium, fosfor, dan biaya per kilogram. Energi ditampilkan dalam MJ/kg, berat dalam kilogram, dan biaya dalam rupiah.</p><p>Anda dapat menambahkan bahan sendiri dengan mengisi profil nutrisinya. Gunakan nilai dari label pemasok atau hasil analisis laboratorium dengan basis pengukuran yang konsisten. Tautan pencarian web hanya membuka pencarian eksternal; PinicFarm tidak memverifikasi atau mengimpor hasilnya.</p></div>
           </section>
           <section id="guide-practical">
             <span className="guide-number">04</span>
