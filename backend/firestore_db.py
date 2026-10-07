@@ -59,11 +59,23 @@ def _email_ref(email: str):
 
 
 def _snapshot_data(snapshot) -> dict | None:
-    if not snapshot.exists:
+    if snapshot is None or not snapshot.exists:
         return None
     data = snapshot.to_dict()
     data["id"] = snapshot.id
     return data
+
+
+def _transaction_snapshot(transaction, reference):
+    result = transaction.get(reference)
+    if hasattr(result, "exists"):
+        return result
+    return next(iter(result), None)
+
+
+def _transaction_document_exists(transaction, reference) -> bool:
+    snapshot = _transaction_snapshot(transaction, reference)
+    return bool(snapshot and snapshot.exists)
 
 
 def _require_team(team_id: str) -> dict:
@@ -100,7 +112,7 @@ def create_user(name: str, email: str, password: str, farm: str = "", role: str 
 
     @firestore.transactional
     def create_in_transaction(transaction):
-        if transaction.get(email_ref).exists:
+        if _transaction_document_exists(transaction, email_ref):
             raise ValueError("Email already registered")
         transaction.create(email_ref, {"email": normalized_email, "user_id": user_id})
         transaction.create(user_ref, user)
@@ -150,17 +162,17 @@ def get_or_create_oauth_user(
 
     @firestore.transactional
     def create_or_link_in_transaction(transaction):
-        identity = _snapshot_data(transaction.get(identity_ref))
+        identity = _snapshot_data(_transaction_snapshot(transaction, identity_ref))
         if identity:
-            user = _snapshot_data(transaction.get(_user_ref(identity["user_id"])))
+            user = _snapshot_data(_transaction_snapshot(transaction, _user_ref(identity["user_id"])))
             if not user:
                 raise RuntimeError("OAuth identity points to a missing user")
             return user
 
-        email_record = _snapshot_data(transaction.get(email_ref))
+        email_record = _snapshot_data(_transaction_snapshot(transaction, email_ref))
         if email_record:
             linked_user_id = email_record["user_id"]
-            user = _snapshot_data(transaction.get(_user_ref(linked_user_id)))
+            user = _snapshot_data(_transaction_snapshot(transaction, _user_ref(linked_user_id)))
             if not user:
                 raise RuntimeError("Email index points to a missing user")
         else:
@@ -249,9 +261,9 @@ def add_member_to_team(team_id: str, user_id: str, role: str = "Peternak lapanga
 
     @firestore.transactional
     def request_in_transaction(transaction):
-        if transaction.get(member_ref).exists:
+        if _transaction_document_exists(transaction, member_ref):
             return True
-        if not transaction.get(request_ref).exists:
+        if not _transaction_document_exists(transaction, request_ref):
             transaction.create(request_ref, {
                 "id": user_id,
                 "user_id": user_id,
@@ -302,16 +314,16 @@ def remove_team_member(team_id: str, actor_user_id: str, member_user_id: str) ->
 
     @firestore.transactional
     def remove_in_transaction(transaction):
-        team = _snapshot_data(transaction.get(team_ref))
+        team = _snapshot_data(_transaction_snapshot(transaction, team_ref))
         if not team:
             raise ValueError("Team not found")
         if team["created_by"] != actor_user_id:
             raise PermissionError("Only the team owner can remove members")
         if member_user_id == team["created_by"]:
             raise ValueError("The team owner cannot be removed")
-        if not transaction.get(member_ref).exists:
+        if not _transaction_document_exists(transaction, member_ref):
             raise ValueError("Team member not found")
-        state = _snapshot_data(transaction.get(state_ref))
+        state = _snapshot_data(_transaction_snapshot(transaction, state_ref))
         transaction.delete(member_ref)
         transaction.delete(membership_ref)
         transaction.update(team_ref, {"member_count": max(0, int(team.get("member_count", 1)) - 1)})
@@ -342,12 +354,12 @@ def review_team_join_request(
 
     @firestore.transactional
     def review_in_transaction(transaction):
-        team = _snapshot_data(transaction.get(team_ref))
+        team = _snapshot_data(_transaction_snapshot(transaction, team_ref))
         if not team:
             raise ValueError("Team not found")
         if team["created_by"] != owner_user_id:
             raise PermissionError("Only the team owner can review join requests")
-        request = _snapshot_data(transaction.get(request_ref))
+        request = _snapshot_data(_transaction_snapshot(transaction, request_ref))
         if not request:
             raise ValueError("Join request not found")
         if accept:
