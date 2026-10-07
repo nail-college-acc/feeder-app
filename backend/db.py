@@ -62,6 +62,19 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS oauth_accounts (
+                provider TEXT NOT NULL,
+                provider_user_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                email TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(provider, provider_user_id),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS teams (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -154,6 +167,67 @@ def get_user_by_id(user_id: str) -> dict | None:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
+
+
+def get_or_create_oauth_user(
+    provider: str,
+    provider_user_id: str,
+    email: str,
+    name: str,
+    email_verified: bool,
+) -> dict:
+    if not email_verified:
+        raise ValueError("The identity provider must verify the email address")
+    normalized_email = email.strip().lower()
+    if not normalized_email or not provider_user_id:
+        raise ValueError("The identity provider did not return a valid account")
+
+    with get_connection() as conn:
+        existing_identity = conn.execute(
+            "SELECT user_id FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?",
+            (provider, provider_user_id),
+        ).fetchone()
+        if existing_identity:
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (existing_identity["user_id"],),
+            ).fetchone()
+            if not user:
+                raise RuntimeError("OAuth identity points to a missing user")
+            return dict(user)
+
+        existing_user = conn.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (normalized_email,),
+        ).fetchone()
+        if existing_user:
+            user_id = existing_user["id"]
+        else:
+            user_id = f"user-{uuid.uuid4()}"
+            conn.execute(
+                """
+                INSERT INTO users (id, name, email, password_hash, farm, role, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    name.strip() or normalized_email.split("@", 1)[0],
+                    normalized_email,
+                    hash_password(str(uuid.uuid4())),
+                    "Kebun pakan",
+                    "Pemilik ternak",
+                    _utc_now(),
+                ),
+            )
+        conn.execute(
+            """
+            INSERT INTO oauth_accounts (provider, provider_user_id, user_id, email, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (provider, provider_user_id, user_id, normalized_email, _utc_now()),
+        )
+        user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(user)
 
 
 def create_team(name: str, farm: str, location: str, description: str, created_by: str) -> dict:
@@ -453,3 +527,27 @@ def serialize_user(row: dict) -> dict:
         "role": row["role"],
         "created_at": row["created_at"],
     }
+
+
+if os.environ.get("FEEDER_DB_BACKEND", "sqlite").strip().lower() == "firestore":
+    from backend.firestore_db import (
+        add_member_to_team,
+        create_team,
+        create_team_recipe,
+        create_user,
+        delete_team,
+        delete_team_recipe,
+        get_current_team_for_user,
+        get_team_join_requests,
+        get_team_members,
+        get_team_recipes,
+        get_teams_for_user,
+        get_user_by_email,
+        get_user_by_id,
+        get_or_create_oauth_user,
+        init_db,
+        remove_team_member,
+        review_team_join_request,
+        search_teams,
+        set_current_team_for_user,
+    )

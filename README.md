@@ -34,9 +34,44 @@ Ingredient profiles are stored in [`backend/data/catalog.json`](./backend/data/c
 
 The interface is in Indonesian. You can add custom ingredients from the ingredient list; these ingredient profiles and saved recipes are stored in that browser's local storage and are not synced between devices or users. Search the catalog by ingredient name, then optionally open the web-search link shown for a query that has no matching result. Web search opens Google in a new tab; Feeder does not scrape or import search results. Verify nutrient values and prices before using custom or catalog data in a real feed formulation.
 
-Authentication and team data are stored in a local SQLite database at `backend/feeder.db` when the FastAPI backend runs. `/api/auth/signup` creates a user record and hashes the password before saving it; `/api/auth/login` verifies stored credentials; `/api/teams` and related routes persist team records and memberships. On Vercel, the database is initialized under `/tmp` because the deployed application files are read-only. Vercel's temporary filesystem is not durable or shared between function instances, so accounts, teams, and shared recipes may disappear; use a hosted database such as PostgreSQL or Supabase for persistent production data. Set `FEEDER_DB_PATH` to override the database path where a persistent writable disk is available.
+Authentication and team data use SQLite locally by default. To use Cloud Firestore, install requirements and set `FEEDER_DB_BACKEND=firestore`; configure Firebase Admin credentials with `FIREBASE_SERVICE_ACCOUNT_JSON` (the service-account JSON contents) and `FIREBASE_PROJECT_ID` in the backend environment. Application Default Credentials are also supported outside Vercel. Keep the service-account private key only in server-side environment settings, never in the frontend or repository. The Firestore database must be created in the Firebase project before the backend connects.
 
-Saved recipes are associated with the active team and stored in SQLite when a signed-in team member saves them. Users can search public teams and request to join; owners can accept or reject requests, remove members, and delete their teams. Deleting a team also removes its memberships, pending requests, and shared recipes. If the user has not joined a team, saved recipes remain in that browser's local storage.
+### Google Sign-In setup
+
+The login and signup pages support Google OpenID Connect. For local testing with SQLite:
+
+1. Create an OAuth 2.0 Web client in Google Cloud Console and add `http://localhost:5173/api/auth/google/callback` as an authorized redirect URI.
+2. Set these variables in the shell before starting FastAPI:
+
+   ```bash
+   export GOOGLE_CLIENT_ID="your-client-id"
+   export GOOGLE_CLIENT_SECRET="your-client-secret"
+   export GOOGLE_REDIRECT_URI="http://localhost:5173/api/auth/google/callback"
+   export FRONTEND_URL="http://localhost:5173"
+   export SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+   ```
+
+3. Start `uvicorn backend.main:app --reload` and the Vite dev server. SQLite remains the default storage and new Google accounts are saved in `backend/feeder.db`.
+
+For Vercel, set the same server-side variables in Project Settings and use your production URL for `GOOGLE_REDIRECT_URI` and `FRONTEND_URL` (for example, `https://your-domain.example/api/auth/google/callback`). Register that exact callback URL in Google Cloud Console. Set a long random `SESSION_SECRET`; do not use the local development fallback in production. Google accounts with verified email addresses are linked to an existing account with the same normalized email, or a new local account is created. OAuth identities are stored in SQLite's `oauth_accounts` table or Firestore's `oauth_accounts` collection.
+
+Firestore uses this document structure:
+
+| Collection / document | Fields and purpose |
+| --- | --- |
+| `users/{user_id}` | `id`, `name`, `email`, `password_hash`, `farm`, `role`, `created_at` |
+| `user_emails/{sha256(email)}` | `email`, `user_id`; unique normalized-email lookup |
+| `oauth_accounts/{sha256(provider:subject)}` | `provider`, `provider_user_id`, `user_id`, `email`, `created_at`; links Google identity to a local user |
+| `teams/{team_id}` | `id`, `name`, `farm`, `location`, `description`, `created_by`, `created_at`, `member_count` |
+| `teams/{team_id}/members/{user_id}` | `id`, `user_id`, `name`, `email`, `role`, `joined_at`, `team_id` |
+| `team_memberships/{user_id}__{team_id}` | `user_id`, `team_id`, `created_at`; reverse lookup for a user's teams |
+| `teams/{team_id}/join_requests/{user_id}` | `id`, `user_id`, `name`, `email`, `role`, `requested_at` |
+| `teams/{team_id}/recipes/{recipe_id}` | `id`, `team_id`, `created_by`, `name`, `items` (array), `savedAt` |
+| `user_team_state/{user_id}` | `user_id`, `team_id`, `updated_at`; user's currently selected team |
+
+Select Firestore in Vercel by setting `FEEDER_DB_BACKEND=firestore`, `FIREBASE_PROJECT_ID`, and `FIREBASE_SERVICE_ACCOUNT_JSON` in the project's server-side environment variables. This adapter does not migrate existing SQLite records; migrate any existing users, teams, and recipes separately before switching production traffic. Team search currently scans team documents to preserve substring matching, so consider adding a search service/index if the number of teams grows substantially.
+
+Saved recipes are associated with the active team and stored in the configured backend when a signed-in team member saves them. Users can search public teams and request to join; owners can accept or reject requests, remove members, and delete their teams. Deleting a team also removes its memberships, pending requests, and shared recipes. If the user has not joined a team, saved recipes remain in that browser's local storage.
 
 ## Deploy to Vercel
 
