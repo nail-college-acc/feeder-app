@@ -204,10 +204,47 @@ function App() {
     window.scrollTo(0, 0);
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } catch (issue) {
+      setError(issue.message || 'Gagal mengakhiri sesi.');
+    }
     setUser(null);
     setActivePage('Home');
   }
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const oauthResult = url.searchParams.get('oauth');
+    if (oauthResult) {
+      url.searchParams.delete('oauth');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
+    fetch('/api/auth/session')
+      .then(async (response) => {
+        if (response.status === 401) return null;
+        if (!response.ok) throw new Error(`Gagal memeriksa sesi (${response.status})`);
+        return response.json();
+      })
+      .then((session) => {
+        if (session?.user) setUser(session.user);
+        if (oauthResult === 'success' && session?.user) {
+          setNotice('Berhasil masuk dengan Google.');
+          setActivePage('Home');
+        }
+      })
+      .catch((issue) => setError(issue.message));
+
+    const oauthErrors = {
+      error_provider_config: 'Google Sign-In belum dikonfigurasi. Atur GOOGLE_CLIENT_ID dan GOOGLE_CLIENT_SECRET di backend.',
+      error_provider_response: 'Google tidak dapat menyelesaikan proses masuk. Silakan coba lagi.',
+      error_profile: 'Google tidak mengembalikan profil akun yang diperlukan.',
+      error_unverified: 'Gunakan akun Google dengan email yang sudah terverifikasi.',
+    };
+    if (oauthErrors[oauthResult]) setError(oauthErrors[oauthResult]);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -933,6 +970,11 @@ function AuthPage({ mode, user, setUser, setError, setNotice, setActivePage }) {
             )}
             <button className="button button-primary" type="submit">{isSignup ? 'Buat akun' : 'Masuk'}</button>
           </form>
+          <div className="auth-divider"><span>atau</span></div>
+          <a className="button button-google" href="/api/auth/google">
+            <span className="google-mark" aria-hidden="true">G</span>
+            Lanjutkan dengan Google
+          </a>
         </section>
 
         <section className="panel auth-panel auth-stacked-panel">
@@ -942,12 +984,12 @@ function AuthPage({ mode, user, setUser, setError, setNotice, setActivePage }) {
           </div>
           <div className="account-card">
             <strong>{isSignup ? 'Penyimpanan akun aktif' : 'Penyimpanan login aktif'}</strong>
-            <span>Data disimpan di database SQLite lokal yang ada di backend FastAPI.</span>
-            <small>Untuk deployment publik, penggunaan database hosted seperti Supabase/PostgreSQL disarankan.</small>
+            <span>Akun disimpan di database backend. SQLite digunakan untuk pengembangan lokal; Firestore dapat dipilih melalui konfigurasi backend.</span>
+            <small>Google Sign-In membuat atau menautkan akun berdasarkan email Google yang terverifikasi.</small>
           </div>
           <ul className="feature-list">
-            <li>Signup baru dibuat langsung ke tabel pengguna di backend.</li>
-            <li>Login memvalidasi password yang di-hash sebelum masuk.</li>
+            <li>Signup dan login menggunakan sesi backend yang aman.</li>
+            <li>Login Google ditautkan ke akun dengan email terverifikasi yang sama.</li>
             <li>Tim juga disimpan di database yang sama untuk kolaborasi.</li>
           </ul>
         </section>

@@ -284,6 +284,11 @@ h1, h2, h3, p { margin-top: 0; }
 .auth-form input, .auth-form select, .auth-form textarea { background: #f9faf7; border: 1px solid #e4e9e1; border-radius: 7px; color: #334734; font: inherit; min-height: 38px; padding: 9px 11px; resize: vertical; }
 .auth-form textarea { min-height: 80px; }
 .auth-stacked-panel { min-height: 100%; }
+.auth-divider { align-items: center; color: #8b978a; display: flex; font-size: 9px; gap: 12px; margin: 17px 0; }
+.auth-divider::before, .auth-divider::after { background: #e7ebe4; content: ""; flex: 1; height: 1px; }
+.button-google { background: #fff; border: 1px solid #dfe5dc; color: #39483c; gap: 10px; text-decoration: none; width: 100%; }
+.button-google:hover { background: #f9fbf8; border-color: #bfcbbc; }
+.google-mark { align-items: center; background: #fff; border: 1px solid #e8ece6; border-radius: 50%; color: #4285f4; display: inline-flex; font-size: 12px; font-weight: 700; height: 21px; justify-content: center; width: 21px; }
 .account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .account-card { background: #f6f8f3; border: 1px solid #edf0ea; border-radius: 8px; display: grid; gap: 6px; margin: 14px 0 18px; padding: 15px 14px; }
 .account-card strong { color: #2d4134; font: 700 16px 'Manrope', sans-serif; }
