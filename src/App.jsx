@@ -832,17 +832,17 @@ function HomePage({ user, setActivePage, activeTeam }) {
         <div className="panel feature-card">
           <div className="feature-icon"><FlaskConical size={18} /></div>
           <h3>Peracik pakan</h3>
-          <p>Susun komposisi bahan, lihat perkiraan nutrisi dan biaya, lalu simpan racikan untuk digunakan kembali.</p>
+          <p>Susun racikan dan lihat estimasi nutrisi serta biaya.</p>
         </div>
         <div className="panel feature-card">
           <div className="feature-icon"><User size={18} /></div>
           <h3>Akun peternak</h3>
-          <p>Setiap pengguna bisa menyiapkan profil usaha, peran, dan akses cepat ke data pakan dan formulasi.</p>
+          <p>Kelola profil usaha dan data akun Anda.</p>
         </div>
         <div className="panel feature-card">
           <div className="feature-icon"><Users size={18} /></div>
           <h3>Manajemen tim</h3>
-          <p>Kelola anggota, peran, dan area kerja bersama untuk koordinasi formulasi pakan dan produksi.</p>
+          <p>Koordinasikan racikan dan pekerjaan bersama tim.</p>
         </div>
       </div>
 
