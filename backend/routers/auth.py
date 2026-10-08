@@ -47,9 +47,19 @@ def _google_oauth_client():
     return oauth.google
 
 
+def _deployment_origin(request: Request) -> str:
+    if os.environ.get("VERCEL_ENV") == "preview":
+        branch_url = os.environ.get("VERCEL_BRANCH_URL") or os.environ.get("VERCEL_URL")
+        if branch_url:
+            if not branch_url.startswith(("http://", "https://")):
+                branch_url = f"https://{branch_url}"
+            return branch_url.rstrip("/")
+
+    return os.environ.get("FRONTEND_URL", str(request.base_url)).rstrip("/")
+
+
 def _frontend_url(request: Request, result: str) -> str:
-    frontend_url = os.environ.get("FRONTEND_URL", str(request.base_url).rstrip("/"))
-    return f"{frontend_url.rstrip('/')}/login?oauth={result}"
+    return f"{_deployment_origin(request)}/login?oauth={result}"
 
 
 @router.get("/auth/google")
@@ -57,7 +67,10 @@ async def google_login(request: Request):
     client = _google_oauth_client()
     if not client:
         return RedirectResponse(_frontend_url(request, "error_provider_config"))
-    redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI") or str(request.url_for("google_callback"))
+    if os.environ.get("VERCEL_ENV") == "preview":
+        redirect_uri = f"{_deployment_origin(request)}/api/auth/google/callback"
+    else:
+        redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI") or str(request.url_for("google_callback"))
     return await client.authorize_redirect(request, redirect_uri)
 
 
