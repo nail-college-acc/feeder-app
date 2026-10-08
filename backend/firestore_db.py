@@ -470,7 +470,11 @@ def get_teams_for_user(user_id: str) -> list[dict]:
     membership_docs = _client().collection("team_memberships").where("user_id", "==", user_id).stream()
     teams = []
     for membership in membership_docs:
-        team = _snapshot_data(_team_ref(membership.id).get())
+        membership_data = membership.to_dict()
+        team_id = membership_data.get("team_id") if membership_data else None
+        if not team_id:
+            continue
+        team = _snapshot_data(_team_ref(team_id).get())
         if team:
             teams.append(team)
     return sorted(teams, key=lambda team: team["created_at"], reverse=True)
